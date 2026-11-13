@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MotorSense Pitch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400..800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* Layout: lienzo fijo de 1920x1080 escalado a la ventana. Contenido en márgenes de 160,
+     una traza de señal como hilo conductor en la franja inferior y la barra de tiempo al pie. */
+  color-scheme: dark;
+
+  /* color */
+  --c-bg:#060a14;
+  --c-surface:#141d30;
+  --c-surface-2:#1f2b45;
+  --c-line:#2c3a57;
+  --c-text:#f3f6fb;
+  --c-text-2:#aab5ca;
+  --c-text-3:#7d8aa5;
+  --c-accent:#1ec8ab;
+  --c-ok:#30d158;
+  --c-warn:#ffd60a;
+  --c-alert:#ff453a;
+
+  /* tipografía */
+  --font-display:"Manrope","Segoe UI Variable Display","SF Pro Display",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono","Cascadia Mono","SF Mono",Consolas,monospace;
+  --fs-mono:24px;
+  --fs-body:40px;
+  --fs-lead:54px;
+  --fs-title:76px;
+  --fs-display:124px;
+  --fs-hero:340px;
+
+  /* espacio (base 8) */
+  --sp-1:8px; --sp-2:16px; --sp-3:24px; --sp-4:32px;
+  --sp-5:48px; --sp-6:64px; --sp-7:96px; --sp-8:160px;
+
+  /* forma y movimiento */
+  --r-1:8px; --r-2:16px; --r-pill:999px;
+  --dur-1:.35s; --dur-2:.8s;
+  --ease:cubic-bezier(.2,.7,.1,1);
+}
+
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--c-bg);color:var(--c-text);overflow:hidden;font-family:var(--font-display)}
+p,h1,h2,ul{margin:0;padding:0}
+ul{list-style:none}
+
+#stage{
+  position:absolute;left:50%;top:50%;width:1920px;height:1080px;
+  transform:translate(-50%,-50%) scale(var(--scale,1));transform-origin:center;
+  background:var(--c-bg);overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+#stage.playing{cursor:none}
+
+/* ---------- escala tipográfica ---------- */
+.hero{font-size:var(--fs-hero);font-weight:800;line-height:.9;letter-spacing:-.05em;font-variant-numeric:tabular-nums}
+.display{font-size:var(--fs-display);font-weight:800;line-height:1.02;letter-spacing:-.035em;text-wrap:balance}
+.title{font-size:var(--fs-title);font-weight:700;line-height:1.08;letter-spacing:-.025em;text-wrap:balance}
+.lead{font-size:var(--fs-lead);font-weight:500;line-height:1.18;letter-spacing:-.015em;color:var(--c-text-2);text-wrap:balance}
+.body{font-size:var(--fs-body);font-weight:500;line-height:1.25;color:var(--c-text-2)}
+.mono{font-family:var(--font-mono);font-size:var(--fs-mono);font-weight:400;letter-spacing:.01em;color:var(--c-text-3)}
+.strong{color:var(--c-text)}
+.accent{color:var(--c-accent)}
+
+/* ---------- escenas ---------- */
+.scene{
+  position:absolute;left:var(--sp-8);right:var(--sp-8);top:100px;height:630px;
+  display:flex;flex-direction:column;justify-content:center;gap:var(--sp-5);
+  opacity:0;visibility:hidden;
+  transition:opacity var(--dur-1) ease,visibility 0s var(--dur-1);
+}
+.scene.active{opacity:1;visibility:visible;transition:opacity .5s ease .3s,visibility 0s}
+.scene.center{align-items:center;text-align:center}
+.scene.tall{height:850px}
+
+[data-at]{opacity:0;transform:translateY(28px);transition:opacity var(--dur-2) var(--ease),transform var(--dur-2) var(--ease)}
+[data-at].on{opacity:1;transform:none}
+
+.stack{display:flex;flex-direction:column;gap:var(--sp-3)}
+
+/* ---------- cifra + texto ---------- */
+.stat{display:grid;grid-template-columns:auto 1fr;gap:var(--sp-7);align-items:center}
+.stat-num{display:flex;align-items:flex-start;white-space:nowrap}
+.stat-num .unit{font-size:.42em;font-weight:700;letter-spacing:-.02em;color:var(--c-text-2);margin:.14em 0 0 .08em}
+.stat-body{display:flex;flex-direction:column;gap:var(--sp-4);max-width:920px}
+
+/* ---------- portada y marca ---------- */
+.wordmark{font-size:200px;font-weight:800;letter-spacing:-.045em;line-height:1}
+.wordmark span{color:var(--c-accent)}
+#cover{gap:var(--sp-4)}
+#cover .lead{max-width:1200px}
+.start{font-size:var(--fs-body);font-weight:600;color:var(--c-text);margin-top:var(--sp-5)}
+kbd{font-family:var(--font-mono);font-size:.8em;font-weight:500;padding:var(--sp-1) var(--sp-3);border-radius:var(--r-1);background:var(--c-surface-2);color:var(--c-text)}
+
+/* ---------- E3: la parada ---------- */
+.stop{display:grid;grid-template-columns:1fr 600px;gap:var(--sp-7);align-items:center}
+.clock{font-size:260px;font-weight:800;line-height:.95;letter-spacing:-.04em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.clock small{font-size:.3em;font-weight:600;letter-spacing:0;color:var(--c-text-2);margin-left:.2em}
+.status{display:flex;align-items:center;gap:var(--sp-3);font-size:var(--fs-body);font-weight:600;color:var(--c-alert)}
+.status i{width:20px;height:20px;border-radius:50%;background:var(--c-alert);box-shadow:0 0 24px var(--c-alert)}
+.status .mono{margin-left:var(--sp-3);color:var(--c-text-2)}
+.bill li{font-size:var(--fs-lead);font-weight:600;letter-spacing:-.015em;padding:var(--sp-4) 0;border-top:2px solid var(--c-line)}
+.bill li:last-child{border-bottom:2px solid var(--c-line)}
+
+/* ---------- J2: instalación y signos vitales ---------- */
+.install{display:grid;grid-template-columns:560px 1fr;gap:var(--sp-7);align-items:center}
+.motor{display:block;width:560px;height:350px;overflow:visible}
+.m-a{fill:var(--c-surface)} .m-b{fill:var(--c-surface-2)} .m-c{fill:var(--c-line)}
+.m-shaft{fill:var(--c-text-2)} .m-key{fill:var(--c-text-3)} .m-slot{fill:var(--c-bg)}
+.m-mod{fill:var(--c-accent)} .m-led{fill:var(--c-bg)}
+.module{transform:translateY(-70px)}
+.module.on{transform:none}
+.wave{fill:none;stroke:var(--c-accent);stroke-width:6;stroke-linecap:round;opacity:0}
+.module.on .wave{animation:wave 2.4s ease-in-out infinite}
+.module.on .wave.w2{animation-delay:.35s}
+.module.on .wave.w3{animation-delay:.7s}
+@keyframes wave{0%,100%{opacity:0}35%,60%{opacity:1}}
+.lanes{display:flex;flex-direction:column;gap:var(--sp-3)}
+.lane{display:grid;grid-template-columns:320px 1fr;align-items:center;gap:var(--sp-4);padding:var(--sp-2) 0;border-top:2px solid var(--c-line)}
+.lane-name{font-size:var(--fs-lead);font-weight:600;letter-spacing:-.015em}
+canvas{display:block}
+
+/* ---------- J3: 4 de cada 10 ---------- */
+.ratio{display:flex;align-items:center;gap:var(--sp-4);white-space:nowrap}
+.ratio-rest{display:flex;flex-direction:column;gap:var(--sp-1)}
+.ratio-rest .title{color:var(--c-text-2)}
+.dots{display:flex;gap:var(--sp-2)}
+.dot{width:48px;height:48px;border-radius:50%;border:3px solid var(--c-line);opacity:1;transform:none;transition:background var(--dur-1) ease,border-color var(--dur-1) ease}
+.dot.on{background:var(--c-text);border-color:var(--c-text)}
+
+/* ---------- J4: línea base y semáforo ---------- */
+.steps{position:relative;height:80px}
+.steps .title{position:absolute;left:0;top:0;white-space:nowrap;font-size:64px}
+.steps .n{font-family:var(--font-mono);font-weight:500;font-size:.7em;color:var(--c-accent);margin-right:var(--sp-3)}
+.detect{display:grid;grid-template-columns:1100px 1fr;gap:var(--sp-6);align-items:center}
+.chart{position:relative}
+.chart .mono{position:absolute;left:var(--sp-2);top:86px;color:var(--c-accent)}
+.sem{display:flex;flex-direction:column;gap:var(--sp-4)}
+.sem li{display:flex;align-items:center;gap:var(--sp-3);font-size:var(--fs-lead);font-weight:600;letter-spacing:-.015em;color:var(--c-text-3);transition:color var(--dur-1) ease}
+.sem li i{width:40px;height:40px;border-radius:50%;border:3px solid var(--c-line);transition:background var(--dur-1) ease,border-color var(--dur-1) ease,box-shadow var(--dur-1) ease}
+.sem[data-state="0"] .s-ok,.sem[data-state="1"] .s-warn,.sem[data-state="2"] .s-alert{color:var(--c-text)}
+.sem[data-state="0"] .s-ok i{background:var(--c-ok);border-color:var(--c-ok);box-shadow:0 0 36px var(--c-ok)}
+.sem[data-state="1"] .s-warn i{background:var(--c-warn);border-color:var(--c-warn);box-shadow:0 0 36px var(--c-warn)}
+.sem[data-state="2"] .s-alert i{background:var(--c-alert);border-color:var(--c-alert);box-shadow:0 0 36px var(--c-alert)}
+
+/* ---------- S1: ahorro ---------- */
+.range{font-size:230px}
+.range .a{font-size:.36em;font-weight:600;letter-spacing:-.01em;color:var(--c-text-2);margin:0 .3em;align-self:center}
+.bars{display:flex;flex-direction:column;gap:var(--sp-3)}
+.bar-row{display:grid;grid-template-columns:520px 1fr;align-items:center;gap:var(--sp-4)}
+.bar-row .body{color:var(--c-text)}
+.bar-track{height:28px;display:flex}
+.bar{height:100%;border-radius:var(--r-1);transform:scaleX(0);transform-origin:left;transition:transform 1.4s var(--ease)}
+.on .bar{transform:none}
+.bar.full{width:100%;background:var(--c-text-3)}
+.bar.low{width:60%;background:var(--c-accent);border-radius:var(--r-1) 0 0 var(--r-1)}
+.bar.span{width:10%;border-radius:0 var(--r-1) var(--r-1) 0;transition-delay:.5s;
+  background:repeating-linear-gradient(135deg,var(--c-accent) 0 6px,transparent 6px 12px)}
+
+/* ---------- S2: dos cifras ---------- */
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-7)}
+.pair .hero{font-size:250px}
+.pair .stack{gap:var(--sp-2)}
+.pair .body{max-width:640px;color:var(--c-text)}
+
+/* ---------- S3: modelo ---------- */
+.model{display:grid;grid-template-columns:1fr auto 1fr;gap:var(--sp-6);align-items:start}
+.model .plus{color:var(--c-accent)}
+.model .body{margin-top:var(--sp-3)}
+
+/* ---------- S4: ruta ---------- */
+.route{display:grid;grid-template-columns:repeat(4,1fr);position:relative;padding-top:var(--sp-5)}
+.route::before{content:"";position:absolute;left:14px;right:25%;top:14px;height:4px;background:var(--c-line)}
+.node{position:relative;display:flex;flex-direction:column;gap:var(--sp-1);padding-right:var(--sp-4)}
+.node::before{content:"";position:absolute;left:0;top:-48px;width:32px;height:32px;border-radius:50%;background:var(--c-bg);border:4px solid var(--c-text-3)}
+.node.done::before{background:var(--c-accent);border-color:var(--c-accent);box-shadow:0 0 32px var(--c-accent)}
+.node .body{color:var(--c-text);font-weight:600}
+.node.done .mono{color:var(--c-accent)}
+
+/* ---------- traza de señal ---------- */
+#trace{position:absolute;left:0;top:730px;
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);
+          mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent)}
+
+/* ---------- barra de tiempo ---------- */
+.hud{position:absolute;left:var(--sp-8);right:var(--sp-8);top:1000px;display:flex;align-items:flex-start;gap:var(--sp-5);transition:opacity var(--dur-1) ease}
+.hud.hidden{opacity:0}
+.hud-track{flex:1;display:flex;gap:var(--sp-1)}
+.seg{display:flex;flex-direction:column;gap:var(--sp-2)}
+.seg b{display:block;height:4px;border-radius:var(--r-pill);background:var(--c-line);overflow:hidden}
+.seg b i{display:block;height:100%;width:0;background:var(--c-accent)}
+.seg span{font-family:var(--font-mono);font-size:22px;color:var(--c-text-3);transition:color var(--dur-1) ease}
+.seg.now span{color:var(--c-text)}
+.hud-time{font-family:var(--font-mono);font-size:22px;color:var(--c-text-2);font-variant-numeric:tabular-nums;margin-top:20px;white-space:nowrap}
+#paused{position:absolute;right:var(--sp-8);top:var(--sp-5);opacity:0;transition:opacity var(--dur-1) ease;color:var(--c-warn)}
+#paused.show{opacity:1}
+
+#stage.still,#stage.still *{transition:none !important;animation:none !important}
+
+@media (prefers-reduced-motion:reduce){
+  [data-at]{transform:none}
+  .module{transform:none}
+}
+</style>
+</head>
+<body>
+<main id="stage">
+
+  <!-- PORTADA -->
+  <section class="scene center active" id="cover">
+    <h1 class="wordmark">Motor<span>Sense</span></h1>
+    <p class="lead">Detección temprana de comportamientos anormales en motores eléctricos</p>
+    <p class="mono">Esteban López · Jacobo Cardona · Samuel Moreno · Universidad del Valle</p>
+    <p class="start"><kbd>Espacio</kbd> o clic para iniciar</p>
+    <p class="mono">Espacio pausa · Flechas cambian de escena · F pantalla completa · H oculta el tiempo · R reinicia</p>
+  </section>
+
+  <!-- ================= ESTEBAN 0:00 a 1:00 ================= -->
+
+  <section class="scene" id="e1" data-start="0">
+    <p class="title" data-at="0.3">Un motor eléctrico nunca falla de repente.</p>
+    <p class="hero" style="font-size:280px" data-at="3.4">Avisa.</p>
+    <p class="title" style="color:var(--c-text-2)" data-at="8.6">Y nadie lo escucha.</p>
+  </section>
+
+  <section class="scene" id="e2" data-start="11">
+    <div class="stat">
+      <div class="stat-num hero" data-at="0.3"><span data-count="72" data-from="0.3" data-dur="1.8">0</span><span class="unit">%</span></div>
+      <div class="stat-body">
+        <p class="lead" data-at="1.2">de la electricidad que consume la industria mueve motores eléctricos.</p>
+        <p class="lead strong" style="font-weight:700" data-at="7">Si el motor se detiene, se detiene la planta.</p>
+        <p class="mono" data-at="1.8">Fuente: IEA 4E EMSA, datos de 2023</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene" id="e3" data-start="22">
+    <div class="stop">
+      <div class="stack">
+        <p class="lead" data-at="0.3">Palmira, Valle del Cauca.<br>Plena cosecha.</p>
+        <p class="clock" data-at="4.5">02:00<small>a. m.</small></p>
+        <p class="status" data-at="7.2"><i></i>Motor principal detenido<span class="mono" id="downtime">00:00:00</span></p>
+      </div>
+      <ul class="bill">
+        <li data-at="9.6">Reparación de urgencia</li>
+        <li data-at="11.1">Producto perdido</li>
+        <li data-at="12.4">Operarios en riesgo</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="scene" id="e4" data-start="36">
+    <div class="stat">
+      <div class="stat-num hero" data-at="2"><span data-count="11" data-from="2" data-dur="6.5">0</span><span class="unit">%</span></div>
+      <div class="stat-body">
+        <p class="lead" data-at="2.4">de sus ingresos anuales pierden las 500 empresas más grandes del mundo por paradas no programadas.</p>
+        <p class="lead strong" style="font-weight:700" data-at="13.6">Una pyme tiene un técnico. <span data-at="15.7" style="display:inline-block">Y suerte.</span></p>
+        <p class="mono" data-at="3">Fuente: Siemens, The True Cost of Downtime 2024</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene" id="e5" data-start="54">
+    <p class="title" style="color:var(--c-text-2)" data-at="0.3">Si el motor avisa,</p>
+    <p class="display" data-at="2.2">¿quién lo está escuchando?</p>
+  </section>
+
+  <!-- ================= JACOBO 1:00 a 1:55 ================= -->
+
+  <section class="scene center" id="j1" data-start="60">
+    <h2 class="wordmark" data-at="0.2">Motor<span>Sense</span></h2>
+    <p class="title" style="color:var(--c-text-2)" data-at="1.2">lo escucha.</p>
+  </section>
+
+  <section class="scene tall" id="j2" data-start="64" style="gap:var(--sp-6)">
+    <div class="stack" style="gap:var(--sp-2)">
+      <p class="title" data-at="0.3">Se instala sobre el motor.</p>
+      <p class="lead" data-at="4.2">Sin modificarlo. Sin tocar el cableado.</p>
+    </div>
+    <div class="install">
+      <svg class="motor" viewBox="0 0 640 400" aria-hidden="true" data-at="0.6">
+        <rect class="m-c" x="100" y="338" width="400" height="14" rx="7"/>
+        <rect class="m-b" x="134" y="316" width="92" height="26" rx="6"/>
+        <rect class="m-b" x="374" y="316" width="92" height="26" rx="6"/>
+        <rect class="m-b" x="56" y="140" width="80" height="172" rx="24"/>
+        <rect class="m-slot" x="74" y="172" width="30" height="8" rx="4"/>
+        <rect class="m-slot" x="74" y="198" width="30" height="8" rx="4"/>
+        <rect class="m-slot" x="74" y="224" width="30" height="8" rx="4"/>
+        <rect class="m-slot" x="74" y="250" width="30" height="8" rx="4"/>
+        <rect class="m-slot" x="74" y="276" width="30" height="8" rx="4"/>
+        <rect class="m-a" x="120" y="122" width="360" height="208" rx="30"/>
+        <rect class="m-b" x="158" y="136" width="10" height="180" rx="5"/>
+        <rect class="m-b" x="188" y="136" width="10" height="180" rx="5"/>
+        <rect class="m-b" x="218" y="136" width="10" height="180" rx="5"/>
+        <rect class="m-b" x="248" y="136" width="10" height="180" rx="5"/>
+        <rect class="m-b" x="278" y="136" width="10" height="180" rx="5"/>
+        <rect class="m-b" x="308" y="136" width="10" height="180" rx="5"/>
+        <rect class="m-b" x="338" y="136" width="10" height="180" rx="5"/>
+        <rect class="m-b" x="368" y="136" width="10" height="180" rx="5"/>
+        <rect class="m-b" x="398" y="136" width="10" height="180" rx="5"/>
+        <rect class="m-b" x="428" y="136" width="10" height="180" rx="5"/>
+        <rect class="m-b" x="456" y="134" width="46" height="184" rx="16"/>
+        <rect class="m-shaft" x="502" y="213" width="112" height="26" rx="6"/>
+        <rect class="m-key" x="566" y="213" width="48" height="8" rx="3"/>
+        <g class="module" data-at="2.6">
+          <path class="wave w1" d="M276 62 a24 24 0 0 1 48 0"/>
+          <path class="wave w2" d="M256 62 a44 44 0 0 1 88 0"/>
+          <path class="wave w3" d="M236 62 a64 64 0 0 1 128 0"/>
+          <rect class="m-mod" x="236" y="80" width="128" height="50" rx="12"/>
+          <circle class="m-led" cx="338" cy="105" r="8"/>
+        </g>
+      </svg>
+      <div class="stack">
+        <div class="lanes">
+          <div class="lane" data-at="11"><span class="lane-name">Vibración</span><canvas data-lane="vib" data-w="580" data-h="80"></canvas></div>
+          <div class="lane" data-at="12.2"><span class="lane-name">Temperatura</span><canvas data-lane="temp" data-w="580" data-h="80"></canvas></div>
+          <div class="lane" data-at="13.4"><span class="lane-name">Corriente</span><canvas data-lane="cur" data-w="580" data-h="80"></canvas></div>
+        </div>
+        <p class="mono" data-at="14.6">Monitoreo continuo, 24 horas</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene" id="j3" data-start="80">
+    <div class="stat">
+      <div class="ratio" data-at="1.6">
+        <span class="hero">4</span>
+        <span class="ratio-rest"><span class="title">de cada</span><span class="display">10</span></span>
+      </div>
+      <div class="stat-body">
+        <div class="dots" data-at="1.6">
+          <i class="dot" data-at="2.0"></i><i class="dot" data-at="2.4"></i><i class="dot" data-at="2.8"></i><i class="dot" data-at="3.2"></i>
+          <i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i><i class="dot"></i>
+        </div>
+        <p class="lead" data-at="3.4">fallas de un motor nacen en los rodamientos.</p>
+        <p class="lead strong" style="font-weight:700" data-at="7">Un rodamiento enfermo vibra y se calienta antes de romperse.</p>
+        <p class="mono" data-at="4">Fuente: encuestas EPRI (41 %) e IEEE-IAS (44 %)</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene tall" id="j4" data-start="93" style="gap:var(--sp-6)">
+    <div class="steps">
+      <p class="title" data-at="0.3" data-off="5"><span class="n">1</span>Registra cómo se comporta el motor sano.</p>
+      <p class="title" data-at="5.3" data-off="10.2"><span class="n">2</span>Compara cada medición con esa línea base.</p>
+      <p class="title" data-at="10.5"><span class="n">3</span>Lo traduce a un lenguaje que todos entienden.</p>
+    </div>
+    <div class="detect">
+      <div class="chart" data-at="0.6">
+        <canvas id="chart" data-w="1100" data-h="360"></canvas>
+        <span class="mono" data-at="3.2">línea base</span>
+      </div>
+      <ul class="sem" id="sem" data-state="-1" data-at="10.8">
+        <li class="s-ok"><i></i>Normal</li>
+        <li class="s-warn"><i></i>Advertencia</li>
+        <li class="s-alert"><i></i>Alerta</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="scene" id="j5" data-start="110">
+    <p class="display" data-at="0.3">No reemplaza al técnico.</p>
+    <p class="title accent" data-at="2.2">Le dice dónde mirar y cuándo actuar.</p>
+  </section>
+
+  <!-- ================= SAMUEL 1:55 a 3:00 ================= -->
+
+  <section class="scene" id="s1" data-start="115" style="gap:var(--sp-5)">
+    <div class="stat" style="gap:var(--sp-6)">
+      <div class="stat-num hero range" data-at="2.5">
+        <span data-count="30" data-from="2.5" data-dur="5">0</span><span class="a">a</span><span data-count="40" data-from="2.5" data-dur="6.5">0</span><span class="unit">%</span>
+      </div>
+      <div class="stat-body" style="gap:var(--sp-3)">
+        <p class="lead" data-at="3">menos cuesta anticiparse a la falla que reparar después del daño.</p>
+        <p class="mono" data-at="3.6">Fuente: Departamento de Energía de EE. UU.</p>
+      </div>
+    </div>
+    <div class="bars">
+      <div class="bar-row" data-at="9"><span class="body">Reparar después del daño</span><div class="bar-track"><i class="bar full"></i></div></div>
+      <div class="bar-row" data-at="10.2"><span class="body">Anticiparse a la falla</span><div class="bar-track"><i class="bar low"></i><i class="bar span"></i></div></div>
+    </div>
+    <p class="lead strong" style="font-weight:700" data-at="15.5">Hoy, esa tecnología tiene precio de gran planta.</p>
+  </section>
+
+  <section class="scene" id="s2" data-start="137" style="gap:var(--sp-5)">
+    <p class="title" data-at="0.2">Ahí está la oportunidad.</p>
+    <div class="pair">
+      <div class="stack" data-at="2.6">
+        <div class="stat-num hero"><span data-count="22" data-from="2.6" data-dur="1.8">0</span><span class="unit">%</span></div>
+        <p class="body">de la agroindustria del país está en el Valle del Cauca.</p>
+        <p class="mono">Fuente: Semana, especial Valle del Cauca</p>
+      </div>
+      <div class="stack" data-at="8.6">
+        <div class="stat-num hero"><span data-count="99" data-from="8.6" data-dur="1.8">0</span><span class="unit">%</span></div>
+        <p class="body">de las empresas registradas en Cali son mipymes.</p>
+        <p class="mono">Fuente: Cámara de Comercio de Cali (99,4 %)</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene" id="s3" data-start="152" style="gap:var(--sp-6)">
+    <p class="lead" data-at="0.3">Componentes del mercado local. Un modelo sencillo.</p>
+    <div class="model">
+      <div data-at="5">
+        <p class="display">Hardware</p>
+        <p class="body" data-at="8.6">Dispositivo<br>Instalación<br>Configuración</p>
+      </div>
+      <p class="display plus" data-at="5.8">+</p>
+      <div data-at="6.4">
+        <p class="display">Servicio</p>
+        <p class="body" data-at="10.4">Monitoreo remoto<br>Reportes<br>Diagnóstico</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene" id="s4" data-start="166" style="gap:var(--sp-7)">
+    <p class="title" data-at="0.2">El diseño conceptual está completo.</p>
+    <div class="route" data-at="0.8">
+      <div class="node done"><span class="body">Diseño conceptual</span><span class="mono">completo</span></div>
+      <div class="node" data-at="2.8"><span class="body">Validación en campo</span><span class="mono">paso 1</span></div>
+      <div class="node" data-at="3.6"><span class="body">Prueba de sensores</span><span class="mono">paso 2</span></div>
+      <div class="node" data-at="4.4"><span class="body">Prototipo funcional</span><span class="mono">paso 3</span></div>
+    </div>
+  </section>
+
+  <section class="scene center" id="s5" data-start="173" style="gap:var(--sp-4)">
+    <p class="title" style="color:var(--c-text-2);font-size:66px" data-at="0.4">Los motores del Valle llevan años avisando.</p>
+    <h2 class="wordmark" data-at="4">Motor<span>Sense</span></h2>
+    <p class="title accent" data-at="5.8">Escucharlos.</p>
+    <p class="mono" data-at="8.5">Esteban López · Jacobo Cardona · Samuel Moreno · Universidad del Valle</p>
+  </section>
+
+  <canvas id="trace" data-w="1920" data-h="270"></canvas>
+
+  <footer class="hud" id="hud">
+    <div class="hud-track">
+      <div class="seg" style="flex:60" data-a="0" data-b="60"><b><i></i></b><span>Esteban López</span></div>
+      <div class="seg" style="flex:55" data-a="60" data-b="115"><b><i></i></b><span>Jacobo Cardona</span></div>
+      <div class="seg" style="flex:65" data-a="115" data-b="180"><b><i></i></b><span>Samuel Moreno</span></div>
+    </div>
+    <div class="hud-time" id="time">0:00 / 3:00</div>
+  </footer>
+  <p class="mono" id="paused">En pausa</p>
+</main>
+
+<script>
+(function(){
+  "use strict";
+  var END = 180;
+  var stage = document.getElementById("stage");
+  var cover = document.getElementById("cover");
+  var hud = document.getElementById("hud");
+  var timeEl = document.getElementById("time");
+  var pausedEl = document.getElementById("paused");
+  var downtime = document.getElementById("downtime");
+  var sem = document.getElementById("sem");
+
+  /* ---------- línea de tiempo ---------- */
+  var scenes = [].slice.call(document.querySelectorAll(".scene[data-start]")).map(function(el){
+    return {el: el, id: el.id, start: +el.dataset.start, end: Infinity};
+  });
+  scenes.forEach(function(s, i){ if (i < scenes.length - 1) s.end = scenes[i + 1].start; });
+
+  var cues = [], counts = [];
+  scenes.forEach(function(s){
+    [].forEach.call(s.el.querySelectorAll("[data-at]"), function(el){
+      cues.push({el: el, at: s.start + +el.dataset.at, off: el.dataset.off ? s.start + +el.dataset.off : Infinity});
+    });
+    [].forEach.call(s.el.querySelectorAll("[data-count]"), function(el){
+      counts.push({el: el, to: +el.dataset.count, from: s.start + +el.dataset.from, dur: +el.dataset.dur, shown: -1});
+    });
+  });
+  var segs = [].slice.call(document.querySelectorAll(".seg")).map(function(el){
+    return {el: el, fill: el.querySelector("i"), a: +el.dataset.a, b: +el.dataset.b};
+  });
+
+  var started = false, playing = false, base = 0, playStart = 0;
+  function now(){ return performance.now() / 1000; }
+  function time(){ return playing ? Math.min(base + now() - playStart, END + 600) : base; }
+  function play(){ if (playing) return; started = true; playing = true; playStart = now(); }
+  function pause(){ if (!playing) return; base = time(); playing = false; }
+  function seek(t){ base = Math.max(0, t); playStart = now(); started = true; }
+  function reset(){ playing = false; started = false; base = 0; }
+  function sceneAt(t){
+    for (var i = scenes.length - 1; i >= 0; i--) if (t >= scenes[i].start) return i;
+    return 0;
+  }
+
+  /* ---------- utilidades ---------- */
+  function clamp(x){ return x < 0 ? 0 : x > 1 ? 1 : x; }
+  function lerp(a, b, p){ return a + (b - a) * p; }
+  function ease(p){ return 1 - Math.pow(1 - p, 3); }
+  function rgba(c, a){ return "rgba(" + Math.round(c[0]) + "," + Math.round(c[1]) + "," + Math.round(c[2]) + "," + a + ")"; }
+  function pad(n){ return (n < 10 ? "0" : "") + n; }
+  var WHITE = [243,246,251], GRAY = [125,138,165], TEAL = [30,200,171];
+  var OK = [48,209,88], WARN = [255,214,10], ALERT = [255,69,58];
+
+  /* ---------- escala y lienzos ---------- */
+  var scale = 1;
+  var canvases = [].slice.call(document.querySelectorAll("canvas"));
+  function fit(){
+    scale = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    stage.style.setProperty("--scale", scale);
+    var k = Math.max(1, Math.min(2, scale * (window.devicePixelRatio || 1)));
+    canvases.forEach(function(c){
+      c._w = +c.dataset.w; c._h = +c.dataset.h; c._k = k;
+      c.width = Math.round(c._w * k); c.height = Math.round(c._h * k);
+      c.style.width = c._w + "px"; c.style.height = c._h + "px";
+    });
+  }
+  window.addEventListener("resize", fit);
+  fit();
+
+  function begin(c){
+    var ctx = c.getContext("2d");
+    ctx.setTransform(c._k, 0, 0, c._k, 0, 0);
+    ctx.clearRect(0, 0, c._w, c._h);
+    ctx.lineJoin = "round"; ctx.lineCap = "round";
+    return ctx;
+  }
+
+  /* ---------- señal ---------- */
+  function clean(u){ return 0.62 * Math.sin(u * 0.022) + 0.22 * Math.sin(u * 0.047 + 1.3); }
+  function rough(u){ return 0.35 * Math.sin(u * 0.21 + 0.5) + 0.25 * Math.sin(u * 0.37 + 2.1) + 0.2 * Math.sin(u * 0.63); }
+  function impulse(u){ var m = ((u % 260) + 260) % 260; return 1.5 * Math.exp(-m / 38) * Math.sin(m * 0.55); }
+
+  var trace = document.getElementById("trace");
+  var cur = {h: 1, amp: 0.6, a: 0.55, c: TEAL.slice()};
+  function traceTarget(t){
+    if (!started) return {h: 1, amp: 0.6, a: 0.55, c: TEAL};
+    var s = scenes[sceneAt(t)], q = t - s.start;
+    switch (s.id) {
+      case "e1": return {h: lerp(1, 0.5, clamp((q - 3.4) / 6)), amp: 1, a: 0.9, c: WHITE};
+      case "e2": return {h: 0.45, amp: 1, a: 0.45, c: WHITE};
+      case "e3": return q < 7 ? {h: 0.3, amp: 1.05, a: 0.9, c: WHITE} : {h: 1, amp: 0, a: 0.95, c: ALERT};
+      case "e4": return {h: 1, amp: 0, a: 0.5, c: GRAY};
+      case "e5": return {h: 0.3, amp: 1, a: 0.85, c: WHITE};
+      case "j1": return {h: 1, amp: 1, a: 1, c: TEAL};
+      case "j2": return {h: 1, amp: 1, a: 0, c: TEAL};
+      case "j3": return {h: 0.3, amp: 1, a: 0.5, c: WHITE};
+      case "j4": return {h: 1, amp: 1, a: 0, c: TEAL};
+      case "j5": return {h: 1, amp: 0.8, a: 0.6, c: TEAL};
+      case "s5": return q < 4 ? {h: 0.3, amp: 1, a: 0.85, c: WHITE} : {h: 1, amp: 1, a: 1, c: TEAL};
+      default: return {h: 1, amp: 0.6, a: 0.35, c: TEAL};
+    }
+  }
+  function drawTrace(t, clock, dt){
+    var tg = traceTarget(t), k = dt > 0.5 ? 1 : 1 - Math.exp(-dt * 4);
+    cur.h = lerp(cur.h, tg.h, k); cur.amp = lerp(cur.amp, tg.amp, k); cur.a = lerp(cur.a, tg.a, k);
+    for (var i = 0; i < 3; i++) cur.c[i] = lerp(cur.c[i], tg.c[i], k);
+    var ctx = begin(trace), w = trace._w, mid = trace._h / 2, A = 50 * cur.amp;
+    if (cur.a < 0.01) return;
+    ctx.beginPath();
+    for (var x = 0; x <= w; x += 3) {
+      var u = x + clock * 90;
+      var y = mid - A * (clean(u) + (1 - cur.h) * (rough(u) * 0.8 + impulse(u)));
+      if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.shadowColor = rgba(cur.c, 0.7 * cur.a); ctx.shadowBlur = 22;
+    ctx.strokeStyle = rgba(cur.c, cur.a); ctx.lineWidth = 4; ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  /* ---------- tres signos vitales ---------- */
+  var lanes = [].slice.call(document.querySelectorAll("canvas[data-lane]"));
+  var laneFn = {
+    vib: function(x, c){ var u = x + c * 130; return 0.5 * Math.sin(u * 0.09) + 0.3 * Math.sin(u * 0.23 + 1) + 0.2 * Math.sin(u * 0.41); },
+    temp: function(x, c){ var u = x + c * 30; return 0.6 * Math.sin(u * 0.008) + 0.25 * Math.sin(u * 0.021 + 2); },
+    cur: function(x, c){ var u = x + c * 170; return 0.85 * Math.sin(u * 0.05); }
+  };
+  function drawLanes(clock){
+    lanes.forEach(function(c){
+      var ctx = begin(c), w = c._w, mid = c._h / 2, f = laneFn[c.dataset.lane];
+      ctx.beginPath();
+      for (var x = 0; x <= w; x += 2) {
+        var y = mid - 28 * f(x, clock);
+        if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = rgba(TEAL, 1); ctx.lineWidth = 4; ctx.stroke();
+    });
+  }
+
+  /* ---------- línea base y estados ---------- */
+  var chart = document.getElementById("chart");
+  function envAt(d){
+    if (d < 14.5) return 1;
+    if (d < 16) return lerp(1, 1.9, ease(clamp((d - 14.5) / 0.8)));
+    return lerp(1.9, 2.9, ease(clamp((d - 16) / 0.6)));
+  }
+  function stateAt(d){ return d < 14.5 ? 0 : d < 16 ? 1 : 2; }
+  function drawChart(q){
+    var ctx = begin(chart), w = chart._w, mid = chart._h / 2, band = 60, v = 200, right = w - 24;
+    var bandA = clamp((q - 2.6) / 1);
+    if (bandA > 0) {
+      ctx.fillStyle = rgba(TEAL, 0.10 * bandA); ctx.fillRect(0, mid - band, w, band * 2);
+      ctx.strokeStyle = rgba(TEAL, 0.6 * bandA); ctx.lineWidth = 2; ctx.setLineDash([10, 10]);
+      ctx.beginPath(); ctx.moveTo(0, mid - band); ctx.lineTo(w, mid - band);
+      ctx.moveTo(0, mid + band); ctx.lineTo(w, mid + band); ctx.stroke(); ctx.setLineDash([]);
+    }
+    var colors = [q < 13 ? WHITE : OK, WARN, ALERT];
+    function yAt(x){
+      var d = q - (right - x) / v, u = x + q * v, e = envAt(d), st = stateAt(d);
+      var y = 42 * e * clean(u * 1.6);
+      if (st >= 1) y += 20 * (e - 1) * rough(u);
+      if (st === 2) y += 34 * impulse(u * 1.3);
+      return {y: mid - y, st: st};
+    }
+    var prev = null, last = null;
+    ctx.lineWidth = 4;
+    for (var x = 0; x <= right; x += 2) {
+      var p = yAt(x);
+      if (prev === null || p.st !== prev) {
+        if (prev !== null) { ctx.lineTo(x, p.y); ctx.stroke(); }
+        ctx.beginPath(); ctx.strokeStyle = rgba(colors[p.st], 1); ctx.moveTo(x, p.y);
+        prev = p.st;
+      } else ctx.lineTo(x, p.y);
+      last = p;
+    }
+    ctx.stroke();
+    if (q > 5.5 && last) {
+      var c = colors[last.st];
+      ctx.shadowColor = rgba(c, 0.9); ctx.shadowBlur = 24;
+      ctx.fillStyle = rgba(c, 1); ctx.beginPath(); ctx.arc(right, last.y, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+    sem.dataset.state = q < 13 ? -1 : q < 14.5 ? 0 : q < 16 ? 1 : 2;
+  }
+
+  /* ---------- cuadro ---------- */
+  var lastClock = now();
+  function render(){
+    var clock = now(), dt = clock - lastClock; lastClock = clock;
+    var t = time(), idx = sceneAt(t);
+
+    cover.classList.toggle("active", !started);
+    scenes.forEach(function(s, i){ s.el.classList.toggle("active", started && i === idx); });
+    cues.forEach(function(c){ c.el.classList.toggle("on", started && t >= c.at && t < c.off); });
+    counts.forEach(function(c){
+      var v = Math.round(c.to * ease(clamp((t - c.from) / c.dur)));
+      if (v !== c.shown) { c.el.textContent = v; c.shown = v; }
+    });
+
+    var stop = Math.max(0, Math.floor(t - 29));
+    downtime.textContent = "00:" + pad(Math.floor(stop / 60) % 60) + ":" + pad(stop % 60);
+
+    var shown = Math.min(t, END), sec = Math.floor(shown);
+    timeEl.textContent = Math.floor(sec / 60) + ":" + pad(sec % 60) + " / 3:00";
+    segs.forEach(function(s){
+      s.fill.style.width = (clamp((shown - s.a) / (s.b - s.a)) * 100) + "%";
+      s.el.classList.toggle("now", started && shown >= s.a && (shown < s.b || s.b === END));
+    });
+    stage.classList.toggle("playing", playing);
+    pausedEl.classList.toggle("show", started && !playing && t < END);
+
+    drawTrace(t, clock, dt);
+    if (started && scenes[idx].id === "j2") drawLanes(clock);
+    if (started && scenes[idx].id === "j4") drawChart(t - scenes[idx].start);
+    requestAnimationFrame(render);
+  }
+
+  /* ---------- controles ---------- */
+  function toggle(){ if (playing) pause(); else play(); }
+  function jump(dir){
+    if (!started) { play(); return; }
+    var t = time(), i = sceneAt(t);
+    if (dir > 0) { if (i < scenes.length - 1) seek(scenes[i + 1].start); }
+    else seek(t - scenes[i].start > 1.5 || i === 0 ? scenes[i].start : scenes[i - 1].start);
+  }
+  window.addEventListener("keydown", function(e){
+    var k = e.key;
+    if (k === " " || k === "Spacebar" || k === "Enter") { e.preventDefault(); toggle(); }
+    else if (k === "ArrowRight" || k === "PageDown") { e.preventDefault(); jump(1); }
+    else if (k === "ArrowLeft" || k === "PageUp") { e.preventDefault(); jump(-1); }
+    else if (k === "r" || k === "R") reset();
+    else if (k === "h" || k === "H") hud.classList.toggle("hidden");
+    else if (k === "f" || k === "F") {
+      try {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else { var p = document.documentElement.requestFullscreen(); if (p && p.catch) p.catch(function(){}); }
+      } catch (err) {}
+    }
+  });
+  stage.addEventListener("click", function(){ if (!playing) play(); });
+
+  /* vista previa de un instante: ?t=75 */
+  try {
+    var q = new URLSearchParams(location.search);
+    if (q.has("t")) { seek(parseFloat(q.get("t")) || 0); playing = false; stage.classList.add("still"); }
+    if (q.get("hud") === "0") hud.classList.add("hidden");
+  } catch (err) {}
+
+  requestAnimationFrame(render);
+})();
+</script>
+</body>
+</html>
